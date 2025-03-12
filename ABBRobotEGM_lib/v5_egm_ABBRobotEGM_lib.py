@@ -11,14 +11,56 @@ import time
 # Reálné rozměry stolu
 real_width = 996  # Šířka v reálném prostoru (mm)
 real_lengh = 2016 # Délka v reálném prostoru (mm)
-target_y = 560 #pixely v obraze, kde se nachazi cara, ktera simuluje y pozici robota
+target_y = 470 #pixely v obraze, kde se nachazi cara, ktera simuluje y pozici robota
 target_y_on = True #predikovany bod se bude nachazet na primce ktera je na nastavene y ose
 robot_komunikace = True # vypnuti komunikace mezi pythonem a robotem pro testovani, True- funguje komunikace
 camera_real = False # pripojeni realne kamery nebo nahravani obrazovky
 robot_offs = 0 # souradnicovy system kamery je 0,0 v levem spodnim rohu, 
 #point na robotovy je ale uprostred, hodnota udava jak moc posunoty je robot uprostred v X ose
+robot_max_center_travel = 250 #jak moc robot jezdi od stredove pozice 
 
 egm = EGM()
+
+
+aruco_dict = cv2.aruco.getPredefinedDictionary(cv2.aruco.DICT_4X4_50)
+aruco_params = cv2.aruco.DetectorParameters()
+offset = 45 #posunuti roi do vnitr
+
+# Detekce ArUco značek pro ROI
+def detect_aruco_roi(image):
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    detector = cv2.aruco.ArucoDetector(aruco_dict, aruco_params)
+    corners, ids, rejected = detector.detectMarkers(gray)
+
+    if ids is not None and len(ids) >= 4:
+        print(f"Detekováno {len(ids)} značek: {ids.flatten()}")
+
+        # Všechny body
+        all_corners = np.concatenate(corners, axis=0).reshape(-1, 2)
+        x_min, y_min = np.min(all_corners, axis=0).astype(int)
+        x_max, y_max = np.max(all_corners, axis=0).astype(int)
+
+        # Oprava pro případ že jsou mimo obrázek
+        x_min = max(0, x_min + offset)
+        y_min = max(0, y_min + offset)
+        x_max = min(image.shape[1], x_max - offset)
+        y_max = min(image.shape[0], y_max - offset)
+
+        roi = (x_min, y_min, x_max - x_min, y_max - y_min)
+
+        # Nakreslení pro vizualizaci
+        annotated = image.copy()
+        cv2.aruco.drawDetectedMarkers(annotated, corners, ids)
+        cv2.rectangle(annotated, (x_min, y_min), (x_max, y_max), (0, 255, 0), 2)
+        cv2.imshow("Detekovane ArUco + ROI", annotated)
+        cv2.waitKey(1000)
+        cv2.destroyWindow("Detekovane ArUco + ROI")
+
+        return roi
+    else:
+        print("ArUco znacky nenalezeny nebo nalezeno mene nez 4 znacky.")
+        return None
+
 
 
 if camera_real:
@@ -47,8 +89,10 @@ if camera_real:
 
 else:
 # Nastavení rozsahu pro černou a šedou barvu v HSV -robotstudio
-    lower_color = np.array([0, 100, 100])  # Černá (nízký jas)
-    upper_color = np.array([10, 255, 255])  # Šedá (střední jas a vyšší kontrast)
+    lower_color = np.array([0, 100, 100])  # robot studio
+    upper_color = np.array([10, 255, 255])  # 
+    #lower_color = np.array([0, 67, 108])  #realobraz
+    #upper_color = np.array([179, 255, 255])  #cervena
 
     area_down = 300
     area_up = 900
@@ -56,11 +100,16 @@ else:
     first_frame = np.array(ImageGrab.grab())
     first_frame = cv2.cvtColor(first_frame, cv2.COLOR_RGB2BGR)
 
-# Výběr oblasti zájmu (ROI)
-cv2.namedWindow("Vyber oblast zájmu (ROI)", cv2.WINDOW_NORMAL)
-cv2.resizeWindow("Vyber oblast zájmu (ROI)", 1280, 720)
-roi = cv2.selectROI("Vyber oblast zájmu (ROI)", first_frame, fromCenter=False, showCrosshair=True)
-cv2.destroyWindow("Vyber oblast zájmu (ROI)")
+roi = detect_aruco_roi(first_frame)
+
+# --- POKUD ARUCO NEFUNGUJE -> MANUALNI VYBER ---
+if roi is None:
+    print("Spoustim manualni vyber ROI...")
+    cv2.namedWindow("Vyber oblast zájmu (ROI)", cv2.WINDOW_NORMAL)
+    cv2.resizeWindow("Vyber oblast zájmu (ROI)", 1280, 720)
+    roi = cv2.selectROI("Vyber oblast zájmu (ROI)", first_frame, fromCenter=False, showCrosshair=True)
+    cv2.destroyWindow("Vyber oblast zájmu (ROI)")
+    
 
 # Historie pozic puku pro výpočet rychlosti
 history = deque(maxlen=4)  # Počet snímků, ze kterých počítáme trajektorii
@@ -83,6 +132,9 @@ max_missed_frames = 2  # Kolik snímků můžeme ztratit, než přepočítáme t
 
 def send_to_rob(point):
     robot_y = 170 #realny robot 40, simulace 170
+    fejkovej_stred = int((roi[2] / 2 * real_width / roi[2])-robot_offs)
+    fake_center = float(fejkovej_stred-robot_offs)
+
     success, state = egm.receive_from_robot()
     if not success:
         print("Failed to receive from robot")
@@ -92,32 +144,29 @@ def send_to_rob(point):
     # Get current orientation (maintain throughout motion)
     current_orient = np.array([state.cartesian.orient.u0, state.cartesian.orient.u1,  state.cartesian.orient.u2,  state.cartesian.orient.u3])
     if point is None or point[1] != target_y:#pokud neni predikovani point nebo pokud je ale neni na hranici robota
-        fejkovej_stred = int((roi[2] / 2 * real_width / roi[2])-robot_offs)
-        #new_pos = np.array([state.cartesian.pos.x,fejkovej_stred,state.cartesian.pos.z])
-        fake_center = float(fejkovej_stred-robot_offs)
+
         new_pos = np.array([fake_center,robot_y,state.cartesian.pos.z])
-        print(f"fake_center")
+
+        print(f"fake_center:{fake_center}")
     elif point[1] == target_y:#predikovany bod je
         real_x = int((point[0] * real_width / roi[2])-robot_offs) 
-        #if real_x > 600 - robot_offs:
-        #    real_x = 600 - robot_offs
-        #elif real_x < 400 - robot_offs:
-        #    real_x = 400 - robot_offs
-        if real_x > (650 - robot_offs) or real_x < (350-robot_offs):
+
+        if real_x > (fake_center + robot_max_center_travel - robot_offs) or real_x < (fake_center - robot_max_center_travel - robot_offs):
             return
 
-        #new_pos = np.array([state.cartesian.pos.x,real_x,state.cartesian.pos.z])
         new_pos = np.array([real_x,robot_y,state.cartesian.pos.z])
-        print(f"real_x")
+        print(f"real_x:{real_x}")
         
     egm.send_to_robot(cartesian=(new_pos, current_orient))
 
 def rob_attack(center):
+    fejkovej_stred = int((roi[2] / 2 * real_width / roi[2])-robot_offs)
+    fake_center = float(fejkovej_stred-robot_offs)
     goal_x = roi_w // 2
     goal_y = 0
     puck_pos_x,puck_pos_y = center
     real_puck_x = int((puck_pos_x * real_width / roi[2])-robot_offs) 
-    if real_puck_x > (600 - robot_offs) or real_puck_x < (400 - robot_offs):
+    if real_puck_x > (fake_center + robot_max_center_travel - robot_offs - robot_offs) or real_puck_x < (fake_center - robot_max_center_travel - robot_offs):
         return
 
     deflection_angle = np.arctan2((goal_y - puck_pos_y),(goal_x - puck_pos_x))
