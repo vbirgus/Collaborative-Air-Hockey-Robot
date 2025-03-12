@@ -166,7 +166,7 @@ def rob_attack(center):
     goal_y = 0
     puck_pos_x,puck_pos_y = center
     real_puck_x = int((puck_pos_x * real_width / roi[2])-robot_offs) 
-    if real_puck_x > (fake_center + robot_max_center_travel - robot_offs - robot_offs) or real_puck_x < (fake_center - robot_max_center_travel - robot_offs):
+    if real_puck_x > (fake_center + robot_max_center_travel - robot_offs) or real_puck_x < (fake_center - robot_max_center_travel - robot_offs):
         return
 
     deflection_angle = np.arctan2((goal_y - puck_pos_y),(goal_x - puck_pos_x))
@@ -175,8 +175,8 @@ def rob_attack(center):
 
     deflected_x_real = int((deflected_x * real_width / roi[2])-robot_offs) 
     deflected_y_real = int(real_lengh - (deflected_y * real_lengh / roi[3]))
-    if deflected_y_real > 500: #omezeni aby robot nejezdil vysoko
-        return
+    #if deflected_y_real > 500: #omezeni aby robot nejezdil vysoko
+     #   return
     #print(f"Attack x:{deflected_x_real}, y: {deflected_y_real}")
     cv2.circle(frame, (int(deflected_x),int(deflected_y)), 5, (255, 0, 0), -1)  
 
@@ -319,7 +319,7 @@ while True:
     # Odeslání příkazů na konci cyklu
     if robot_komunikace:
         send_to_rob(final_predicted_point)
-        if detected_puck and (abs(puck_center[1] - target_y) <= 100):  # real 300
+        if detected_puck and (abs(puck_center[1] - target_y) <= 50):  # real 300
             rob_attack(puck_center)
 
     if cv2.waitKey(1) & 0xFF == ord('q'):
