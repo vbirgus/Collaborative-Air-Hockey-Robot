@@ -13,6 +13,7 @@ In addition to the Python script, the repository includes a RobotStudio simulati
 - Live trajectory prediction
 - Simulation / Real
 - EGM for controlling abb robot
+- Passive and active robot response
 
 
 
