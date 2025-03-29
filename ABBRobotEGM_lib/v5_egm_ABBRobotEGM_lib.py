@@ -11,9 +11,9 @@ import cv2.aruco as aruco
 # Reálné rozměry stolu
 real_width = 996  # Šířka v reálném prostoru (mm)
 real_lengh = 2016 # Délka v reálném prostoru (mm)
-target_y = 580 #pixely v obraze, kde se nachazi cara, ktera simuluje y pozici robota
+target_y = 550 #pixely v obraze, kde se nachazi cara, ktera simuluje y pozici robota
 target_y_on = True #predikovany bod se bude nachazet na primce ktera je na nastavene y ose
-robot_komunikace = False # vypnuti komunikace mezi pythonem a robotem pro testovani, True- funguje komunikace
+robot_komunikace = True # vypnuti komunikace mezi pythonem a robotem pro testovani, True- funguje komunikace
 camera_real = False # pripojeni realne kamery nebo nahravani obrazovky
 robot_offs = 0 # souradnicovy system kamery je 0,0 v levem spodnim rohu, 
 #point na robotovy je ale uprostred, hodnota udava jak moc posunoty je robot uprostred v X ose
@@ -162,7 +162,6 @@ missed_frames = 0
 max_missed_frames = 2  # Kolik snímků můžeme ztratit, než přepočítáme trajektorii REAL3
 
 
-
 def send_to_rob(point):
     robot_y = 170 #realny robot 40, simulace 170
     success, state = egm.receive_from_robot()
@@ -221,58 +220,6 @@ def rob_attack(center):
     new_pos = np.array([deflected_x_real,deflected_y_real,state.cartesian.pos.z])
     egm.send_to_robot(cartesian=(new_pos, current_orient))  
 
-def rob_attack_bounce(center):
-    """
-    Robot cíleně odrazí puk o boční stěnu tak, aby následně skončil v brance.
-    """
-    goal_x = roi_w // 2  # Střed branky
-    goal_y = 0  # Branka je na Y = 0
-    puck_pos_x, puck_pos_y = center
-
-    # --- 1) Výběr boční stěny pro odraz ---
-    # Pokud je puk blíž levé stěně, použije pravou a naopak
-    if puck_pos_x < roi_w // 2:
-        wall_x = roi_w - 20  # Odraz od pravé stěny (ne úplně do rohu)
-    else:
-        wall_x = 20  # Odraz od levé stěny
-
-    wall_y = puck_pos_y // 2  # Umístíme odrazový bod přibližně do poloviny výšky
-
-    # --- 2) Výpočet úhlu k boční stěně ---
-    bounce_angle = np.arctan2((wall_y - puck_pos_y), (wall_x - puck_pos_x))
-
-    # Po odrazu chceme, aby puk pokračoval do branky
-    post_bounce_angle = np.arctan2((goal_y - wall_y), (goal_x - wall_x))
-
-    # --- 3) Výpočet místa pro robota, odkud zahraje odraz ---
-    # Posuneme robotovu úderovou pozici blíže k puku, aby měl správný úhel
-    attack_x = puck_pos_x + np.cos(bounce_angle) * 50
-    attack_y = puck_pos_y + np.sin(bounce_angle) * 50
-
-    attack_x_real = int((attack_x * real_width / roi[2])-robot_offs)
-    attack_y_real = int(real_lengh - (attack_y * real_lengh / roi[3]))
-
-    if attack_y_real > 500:  # Omezení, aby robot nejezdil vysoko
-        return
-
-    # --- 4) Vizualizace trajektorie ---
-    cv2.circle(frame, (int(wall_x), int(wall_y)), 5, (0, 255, 255), -1)  # Bod odrazu (žlutý)
-    cv2.line(frame, (puck_pos_x, puck_pos_y), (int(wall_x), int(wall_y)), (255, 0, 255), 2)  # Čára k odrazu
-    cv2.line(frame, (int(wall_x), int(wall_y)), (goal_x, goal_y), (255, 0, 255), 2)  # Čára po odrazu
-
-    # --- 5) Poslání robota do úderové pozice ---
-    success, state = egm.receive_from_robot()
-    if not success:
-        print("Failed to receive from robot")
-        return
-
-    current_orient = np.array([
-        state.cartesian.orient.u0, state.cartesian.orient.u1,  
-        state.cartesian.orient.u2, state.cartesian.orient.u3
-    ])
-
-    new_pos = np.array([attack_x_real, attack_y_real, state.cartesian.pos.z])
-    egm.send_to_robot(cartesian=(new_pos, current_orient))
 
 
 while True:
@@ -412,9 +359,8 @@ while True:
     # Odeslání příkazů na konci cyklu
     if robot_komunikace:
         send_to_rob(final_predicted_point)
-        if detected_puck and (abs(puck_center[1] - target_y) <= 100):  # real 300
+        if detected_puck and (abs(puck_center[1] - target_y) <= 200):  # real 300
             rob_attack(puck_center)
-
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
