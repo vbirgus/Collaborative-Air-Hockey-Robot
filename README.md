@@ -76,7 +76,14 @@ python v5_egm_ABBRobotEGM_lib.py
 ## 🎥 Demonstration
 
 Images, animations, or demo videos showcasing the robot's actions and vision system can be added here.
-https://github.com/user-attachments/assets/5be29a45-7db5-46cd-9c55-678b50e69f5a
+
+
+https://github.com/user-attachments/assets/263d3c55-cbe8-4137-a946-d892f6663bf2
+https://github.com/user-attachments/assets/2b463e1e-2f4c-4144-8117-56780a42aeff
+https://github.com/user-attachments/assets/e11c11ee-a758-47f0-a9bd-0699d7d55edf
+
+
+
 
 ---
 
