@@ -1,4 +1,4 @@
-#funkci verze_test_real_ok
+#funkci verze_test_real_ok funugje
 import cv2
 import numpy as np
 from pypylon import pylon
@@ -9,16 +9,16 @@ import cv2.aruco as aruco
 
 
 # Reálné rozměry stolu
-real_width = 996  # Šířka v reálném prostoru (mm)
-real_lengh = 2016 # Délka v reálném prostoru (mm)
-target_y = 550 #pixely v obraze, kde se nachazi cara, ktera simuluje y pozici robota
+real_width = 1030  # Šířka v reálném prostoru (mm)
+real_lengh = 1940 # Délka v reálném prostoru (mm)
+target_y = 1550 #pixely v obraze, kde se nachazi cara, ktera simuluje y pozici robota
 target_y_on = True #predikovany bod se bude nachazet na primce ktera je na nastavene y ose
 robot_komunikace = True # vypnuti komunikace mezi pythonem a robotem pro testovani, True- funguje komunikace
-camera_real = False # pripojeni realne kamery nebo nahravani obrazovky
-robot_offs = 0 # souradnicovy system kamery je 0,0 v levem spodnim rohu, 
+camera_real = True # pripojeni realne kamery nebo nahravani obrazovky
+robot_offs = 30 # souradnicovy system kamery je 0,0 v levem spodnim rohu, 
 #point na robotovy je ale uprostred, hodnota udava jak moc posunoty je robot uprostred v X ose
-offset_x = 50  # Posun dovnitř na ose X (pixely)
-offset_y = 30  # Posun dovnitř na ose Y (pixely)
+offset_x = 100  # Posun dovnitř na ose X (pixely)
+offset_y = 60  # Posun dovnitř na ose Y (pixely)
 
 egm = EGM()
 
@@ -163,7 +163,7 @@ max_missed_frames = 2  # Kolik snímků můžeme ztratit, než přepočítáme t
 
 
 def send_to_rob(point):
-    robot_y = 170 #realny robot 40, simulace 170
+    robot_y = 40 #realny robot 40, simulace 170
     success, state = egm.receive_from_robot()
     if not success:
         print("Failed to receive from robot")
@@ -359,7 +359,7 @@ while True:
     # Odeslání příkazů na konci cyklu
     if robot_komunikace:
         send_to_rob(final_predicted_point)
-        if detected_puck and (abs(puck_center[1] - target_y) <= 200):  # real 300
+        if detected_puck and (abs(puck_center[1] - target_y) <= 300):  # real 300
             rob_attack(puck_center)
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
