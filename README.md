@@ -2,9 +2,10 @@
 
 **Master's Thesis Project**  
 Faculty of Applied Informatics, Tomas Bata University in Zlín  
-**Author**: Vojtěch Birgus
-**Thesis supervisor**: Ľuboš Spaček
+**Author**: Vojtěch Birgus  
+**Thesis supervisor**: Ľuboš Spaček  
 **Year**: 2025
+
 
 ---
 
