@@ -1,4 +1,4 @@
-# Collaborative Air Hockey Robot 🤖🏒
+# Collaborative ABB Robot as an opponent in the Air Hockey Game 🤖🏒
 
 **Master's Thesis Project**  
 Faculty of Applied Informatics, Tomas Bata University in Zlín  
