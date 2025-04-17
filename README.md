@@ -15,7 +15,8 @@ This repository contains the implementation of a collaborative robotic system de
 
 The system uses a vision pipeline to detect the puck and predict its motion. Based on the predicted trajectory, the robot reacts either defensively or offensively to intercept or hit the puck back.
 
-![porovnani-realsimulace_new](https://github.com/user-attachments/assets/62368ffe-b65e-4fec-afa0-6566268100ca)
+![porovnani-realsimulace_new2](https://github.com/user-attachments/assets/8c614121-4ddf-4090-8dc8-869a9086f6de)
+
 
 
 
