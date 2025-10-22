@@ -1,4 +1,6 @@
-#funkci verze_test_real_ok funugje
+#funkci verze_test na realu - nutno vyzkouset, tato verze ma upravene komunikace a jeste zlepsenou predikci
+#test na realu probelh, sciprt je nachystan na DOD, parametry upraveny, funguje to znatelene lepe, viz video
+#aruco znacky zacinaji od leveho horniho rohu
 import cv2
 import numpy as np
 from pypylon import pylon
@@ -6,19 +8,29 @@ from PIL import ImageGrab
 from collections import deque
 from ABBRobotEGM import EGM
 import cv2.aruco as aruco
+import time
 
 
 # Reálné rozměry stolu
-real_width = 1030  # Šířka v reálném prostoru (mm)
-real_lengh = 1940 # Délka v reálném prostoru (mm)
-target_y = 1550 #pixely v obraze, kde se nachazi cara, ktera simuluje y pozici robota
+#real_width = 1030  # Šířka v reálném prostoru (mm) #real
+#real_lengh = 1940 # Délka v reálném prostoru (mm)  #real
+#real_width = 996  # Šířka v reálném prostoru (mm)
+#real_lengh = 2016 # Délka v reálném prostoru (mm)
+
 target_y_on = True #predikovany bod se bude nachazet na primce ktera je na nastavene y ose
-robot_komunikace = True # vypnuti komunikace mezi pythonem a robotem pro testovani, True- funguje komunikace
-camera_real = True # pripojeni realne kamery nebo nahravani obrazovky
-robot_offs = 30 # souradnicovy system kamery je 0,0 v levem spodnim rohu, 
+robot_komunikace = True # vypnuti komunikace mezi pythonem a robotem pro testovani, True- funguje komunikace python-robot
+camera_real = False # pripojeni realne kamery nebo nahravani obrazovky True - je pripojena basler kamera pres usb
+robot_offs = 0 # souradnicovy system kamery je 0,0 v levem spodnim rohu, posun x souradnice od praveho rohu smrerem k levemu
 #point na robotovy je ale uprostred, hodnota udava jak moc posunoty je robot uprostred v X ose
-offset_x = 100  # Posun dovnitř na ose X (pixely)
-offset_y = 60  # Posun dovnitř na ose Y (pixely)
+
+#
+
+#kde robot chyta, souradnice v mm
+robot_y = 40 #realny robot 40, simulace 170
+max_robot_movement = 150 #kolik muze robot jezdit od stredu
+target_y_offset_mm = 100 #posunuti zelene cary kde robot chyta, posouva se smeren nahoru sim 40
+
+
 
 egm = EGM()
 
@@ -34,7 +46,15 @@ if camera_real:
     lower_color = np.array([0, 67, 108])  #
     upper_color = np.array([179, 255, 255])  #cervena
     area_down = 1500
-    area_up = 2500
+    area_up = 3500
+
+    # Reálné rozměry stolu
+    real_width = 1030  # Šířka v reálném prostoru (mm) #real
+    real_lengh = 1940 # Délka v reálném prostoru (mm)  #real
+
+    #ofest obrazu a hraci plochy podle aruco znacek
+    offset_x = 100  # Posun dovnitř na ose X (pixely) real  
+    offset_y = 60  # Posun dovnitř na ose Y (pixely) real
 
     grabResult = camera.RetrieveResult(5000, pylon.TimeoutHandling_ThrowException)
     if grabResult.GrabSucceeded():
@@ -46,10 +66,24 @@ if camera_real:
         print("Chyba při získávání prvního snímku.")
         exit()
 
-else:
+else: #virtualni kamera alias screen
+    #nastaveni parametru robotav simulaci
+    robot_y = 170 #realny robot 40, simulace 170
+    target_y_offset_mm = 40
+    max_robot_movement = 250 #kolik muze robot jezdit od stredu
+
 # Nastavení rozsahu pro černou a šedou barvu v HSV -robotstudio
     lower_color = np.array([0, 100, 100])  # Černá (nízký jas)
     upper_color = np.array([10, 255, 255])  # Šedá (střední jas a vyšší kontrast)
+
+
+    #ofest obrazu a hraci plochy podle aruco znacek
+    offset_x = 50  # Posun dovnitř na ose X (pixely)
+    offset_y = 30  # Posun dovnitř na ose Y (pixely)
+
+    # Reálné rozměry stolu
+    real_width = 996  # Šířka v reálném prostoru (mm)
+    real_lengh = 2016 # Délka v reálném prostoru (mm)c
 
     area_down = 300
     #area_up = 900
@@ -159,34 +193,58 @@ bounce_lock = False
 
 # Počet snímků, kdy puk nebyl detekován
 missed_frames = 0
-max_missed_frames = 2  # Kolik snímků můžeme ztratit, než přepočítáme trajektorii REAL3
+max_missed_frames = 3  # Kolik snímků můžeme ztratit, než přepočítáme trajektorii REAL3
 
+# Uchovává poslední predikovaný bod a kdy byl vytvořen
+last_valid_predicted_point = None
+last_predicted_time = 0
+max_point_age = 0.15  # v sekundách
+
+
+
+target_y_offset = int(target_y_offset_mm * roi[3] / real_lengh)
+target_y = int(roi[3] - (robot_y * roi[3] / real_lengh)) - target_y_offset
+
+stred_roi= int((roi[2] / 2 * real_width / roi[2])-robot_offs)
+max_move_x_left = stred_roi - max_robot_movement
+max_move_x_right = stred_roi + max_robot_movement
+
+failed_egm_count = 0
+max_failed_egm = 3
 
 def send_to_rob(point):
-    robot_y = 40 #realny robot 40, simulace 170
+    global failed_egm_count,egm
+
+
     success, state = egm.receive_from_robot()
     if not success:
-        print("Failed to receive from robot")
+        failed_egm_count += 1
+        print("Failed to receive from robot (count:", failed_egm_count, ")")
+        if failed_egm_count >= max_failed_egm:
+            print("Restartuji EGM spojení...")
+            try:
+                egm.close()
+            except:
+                pass
+            egm = EGM()
+            failed_egm_count = 0
         return
-    #print(f"Aktuální pozice robota: X={state.cartesian.pos.x}, Y={state.cartesian.pos.y}, Z={state.cartesian.pos.z}")
-
+    else:
+        failed_egm_count = 0
+    
     # Get current orientation (maintain throughout motion)
     current_orient = np.array([state.cartesian.orient.u0, state.cartesian.orient.u1,  state.cartesian.orient.u2,  state.cartesian.orient.u3])
     if point is None or point[1] != target_y:#pokud neni predikovani point nebo pokud je ale neni na hranici robota
-        #fejkovej_stred = int((roi[2] / 2 * real_width / roi[2])-robot_offs)
-        fake_center = float(500-robot_offs)
-        new_pos = np.array([fake_center,robot_y,state.cartesian.pos.z])
-        #print(f"fake_center")
+       
+        #fake_center = float(500-robot_offs)
+        new_pos = np.array([stred_roi,robot_y,state.cartesian.pos.z])
+        #print(f"stred pozice: {stred_roi}")
     elif point[1] == target_y:#predikovany bod je
         real_x = int((point[0] * real_width / roi[2])-robot_offs) 
-        #if real_x > 600 - robot_offs:
-        #    real_x = 600 - robot_offs
-        #elif real_x < 400 - robot_offs:
-        #    real_x = 400 - robot_offs
-        if real_x > (650 - robot_offs) or real_x < (350-robot_offs):
+
+        if real_x > (max_move_x_right - robot_offs) or real_x < (max_move_x_left-robot_offs):
             return
 
-        #new_pos = np.array([state.cartesian.pos.x,real_x,state.cartesian.pos.z])
         new_pos = np.array([real_x,robot_y,state.cartesian.pos.z])
         #print(f"real_x")
         
@@ -197,12 +255,12 @@ def rob_attack(center):
     goal_y = 0
     puck_pos_x,puck_pos_y = center
     real_puck_x = int((puck_pos_x * real_width / roi[2])-robot_offs) 
-    if real_puck_x > (650 - robot_offs) or real_puck_x < (350 - robot_offs):
+    if real_puck_x > (max_move_x_right - robot_offs) or real_puck_x < (max_move_x_left - robot_offs):
         return
 
     deflection_angle = np.arctan2((goal_y - puck_pos_y),(goal_x - puck_pos_x))
-    deflected_x = puck_pos_x + np.cos(deflection_angle) * 50
-    deflected_y = puck_pos_y + np.sin(deflection_angle) * 50
+    deflected_x = puck_pos_x + np.cos(deflection_angle) * 50 # 50 real funguje
+    deflected_y = puck_pos_y + np.sin(deflection_angle) * 50 # 50 real funguje
 
     deflected_x_real = int((deflected_x * real_width / roi[2])-robot_offs) 
     deflected_y_real = int(real_lengh - (deflected_y * real_lengh / roi[3]))
@@ -301,7 +359,7 @@ while True:
             if vy < 0:  # Pokud puk jede nahoru, nevytváříme trajektorii
                 prediction_active = False
                 predicted_trajectory = []
-                final_predicted_point = None
+                #final_predicted_point = None
             else:
                 deviation_detected = False
                 if prediction_active and predicted_trajectory:
@@ -331,8 +389,14 @@ while True:
                                 final_predicted_x = int(prev_x + t * (pred_x - prev_x))
                                 final_predicted_y = target_y
                                 final_predicted_point = (final_predicted_x, final_predicted_y)
+                                last_valid_predicted_point = final_predicted_point
+                                last_predicted_time = time.time()
+
                             else:
                                 final_predicted_point = (int(pred_x), target_y)
+                                last_valid_predicted_point = final_predicted_point
+                                last_predicted_time = time.time()
+
                             break
 
                         predicted_trajectory.append((int(pred_x), int(pred_y)))
@@ -345,7 +409,7 @@ while True:
             print("Puk nebyl detekován několik snímků. Trajektorie resetována.")
             prediction_active = False
             predicted_trajectory = []
-            final_predicted_point = None
+            #final_predicted_point = None
 
     if prediction_active and predicted_trajectory:
         for i in range(1, len(predicted_trajectory)):
@@ -356,11 +420,22 @@ while True:
     combined = np.hstack((frame, cv2.cvtColor(mask, cv2.COLOR_GRAY2BGR)))
     cv2.imshow("Detekce + Maska", combined)
 
+    
     # Odeslání příkazů na konci cyklu
     if robot_komunikace:
-        send_to_rob(final_predicted_point)
-        if detected_puck and (abs(puck_center[1] - target_y) <= 300):  # real 300
-            rob_attack(puck_center)
+        try:
+            if last_valid_predicted_point and (time.time() - last_predicted_time <= max_point_age):
+                send_to_rob(last_valid_predicted_point)
+            else:
+                send_to_rob(None)  # Robot se vrátí do středu
+        except Exception as e:
+            print("Chyba pri odesilani do robota",e)
+        try:
+            if detected_puck and (abs(puck_center[1] - target_y) <= 300):  # real 300
+                rob_attack(puck_center)
+        except Exception as e:
+            print("Chyba pri odesilani utoku do robota",e)
+
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
